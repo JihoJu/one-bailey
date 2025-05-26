@@ -1,0 +1,110 @@
+version: '3.8'
+
+networks:
+  one-bailey-network:
+    driver: bridge
+
+volumes:
+  mongodb-data:
+  influxdb-data:
+  redis-data:
+
+services:
+  # ===========================================
+  # Core Infrastructure
+  # ===========================================
+
+  # MongoDB - 메인 데이터베이스
+  mongodb:
+    image: mongo:7
+    container_name: one-bailey-mongodb
+    networks:
+      - one-bailey-network
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: trader
+      MONGO_INITDB_ROOT_PASSWORD: secure_password
+      MONGO_INITDB_DATABASE: onebailey
+    volumes:
+      - mongodb-data:/data/db
+      - ./scripts/mongodb/init.js:/docker-entrypoint-initdb.d/init.js:ro
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "-u", "trader", "-p", "secure_password", "--authenticationDatabase", "onebailey", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # InfluxDB - 시계열 데이터베이스
+  influxdb:
+    image: influxdb:2.7-alpine
+    container_name: one-bailey-influxdb
+    networks:
+      - one-bailey-network
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminpassword
+      DOCKER_INFLUXDB_INIT_ORG: one-bailey
+      DOCKER_INFLUXDB_INIT_BUCKET: trading_data
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: one-bailey-admin-token-12345678901234567890
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    ports:
+      - "8086:8086"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis - 캐싱 및 메시지 큐
+  redis:
+    image: redis:7-alpine
+    container_name: one-bailey-redis
+    networks:
+      - one-bailey-network
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ===========================================
+  # Development Tools
+  # ===========================================
+
+  # MongoDB Express - MongoDB GUI
+  mongo-express:
+    image: mongo-express:latest
+    container_name: one-bailey-mongo-gui
+    networks:
+      - one-bailey-network
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: admin123
+      ME_CONFIG_MONGODB_URL: mongodb://admin:admin123@mongodb:27017/
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: admin123
+    ports:
+      - "8082:8081"
+    depends_on:
+      - mongodb
+
+  # Redis Commander - Redis GUI
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: one-bailey-redis-gui
+    networks:
+      - one-bailey-network
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
