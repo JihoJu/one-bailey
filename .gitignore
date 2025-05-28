@@ -38,7 +38,7 @@ Thumbs.db
 
 # Project specific
 logs/
-data/
+# data/
 *.log
 *.db
 .coverage
